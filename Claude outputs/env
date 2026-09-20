@@ -1,0 +1,20 @@
+# ============================================================
+# .env — ค่าลับทั้งหมดของโปรเจกต์ (ห้ามขึ้น Git — มี .gitignore กันไว้)
+# ปัจจุบัน: เว็บ static อ่านไฟล์นี้เองไม่ได้ → ก๊อปค่า Supabase ไปใส่ config.js ด้วย
+# อนาคต: Python backend จะอ่านค่าจากไฟล์นี้โดยตรง
+# ============================================================
+
+# --- Supabase (ใช้กับเว็บเดโมตอนนี้) ---
+SUPABASE_URL=https://xxxxxxxxxxxx.supabase.co
+SUPABASE_ANON_KEY=eyJhbGciOi...
+
+# --- สำหรับเวอร์ชันจริง (ยังไม่ใช้ตอนนี้) ---
+# Claude
+ANTHROPIC_API_KEY=
+
+# Business Central (MCP / API)
+BC_TENANT_ID=
+BC_ENVIRONMENT=Production
+BC_COMPANY=
+BC_CLIENT_ID=
+BC_CLIENT_SECRET=

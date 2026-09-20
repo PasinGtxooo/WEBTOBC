@@ -1,0 +1,9 @@
+# ค่าลับ ห้ามขึ้น Git
+.env
+config.js
+
+# ของ Python (เวอร์ชันจริง)
+__pycache__/
+*.pyc
+venv/
+.venv/

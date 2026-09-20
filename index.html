@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Web-to-BC Order Agent</title>
+<style>
+  * { box-sizing: border-box; }
+  :root {
+    --bg: #f0f2f5;
+    --panel: #ffffff;
+    --line: #e2e5ea;
+    --brand: #2b5cff;
+    --brand-dark: #1e3fb0;
+    --text: #1a1d24;
+    --muted: #6b7280;
+    --bot: #eef1f7;
+    --user: #2b5cff;
+    --ok: #16a34a;
+    --warn: #d97706;
+    --danger: #dc2626;
+  }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", Tahoma, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    background: var(--brand);
+    color: #fff;
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  header h1 { font-size: 18px; margin: 0; }
+  header .tag {
+    font-size: 12px; background: rgba(255,255,255,.2);
+    padding: 3px 8px; border-radius: 20px;
+  }
+  .wrap {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    padding: 16px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  @media (max-width: 800px) { .wrap { grid-template-columns: 1fr; } }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    height: 78vh;
+    overflow: hidden;
+  }
+  .panel-head {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--line);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .panel-head .sub { font-size: 12px; color: var(--muted); font-weight: 400; }
+  select {
+    padding: 6px 8px; border: 1px solid var(--line);
+    border-radius: 8px; font-size: 13px;
+  }
+  /* chat */
+  .chat { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 78%; padding: 9px 13px; border-radius: 14px; font-size: 14px; line-height: 1.45; white-space: pre-wrap; }
+  .msg.bot { background: var(--bot); align-self: flex-start; border-bottom-left-radius: 4px; }
+  .msg.user { background: var(--user); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+  .msg.sys { align-self: center; background: transparent; color: var(--muted); font-size: 12px; }
+  .chat-input {
+    display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--line);
+  }
+  .chat-input input {
+    flex: 1; padding: 10px 12px; border: 1px solid var(--line);
+    border-radius: 20px; font-size: 14px;
+  }
+  .chat-input button, .send {
+    background: var(--brand); color: #fff; border: 0;
+    padding: 0 18px; border-radius: 20px; cursor: pointer; font-size: 14px;
+  }
+  .chat-input button:hover { background: var(--brand-dark); }
+  /* admin */
+  .queue { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+  .empty { color: var(--muted); text-align: center; margin-top: 40px; font-size: 14px; }
+  .order {
+    border: 1px solid var(--line); border-radius: 10px; padding: 12px;
+  }
+  .order .top { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 8px; }
+  .order .cust { font-weight: 600; }
+  .order table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .order td { padding: 3px 0; }
+  .order td.q { text-align: center; color: var(--muted); width: 60px; }
+  .order td.p { text-align: right; width: 90px; }
+  .order .total { border-top: 1px dashed var(--line); margin-top: 6px; padding-top: 6px; font-weight: 600; text-align: right; }
+  .order .acts { display: flex; gap: 8px; margin-top: 10px; }
+  .order .acts button { flex: 1; padding: 7px; border-radius: 8px; border: 0; cursor: pointer; font-size: 13px; }
+  .btn-ok { background: var(--ok); color: #fff; }
+  .btn-no { background: #fff; color: var(--danger); border: 1px solid var(--danger) !important; }
+  .badge { font-size: 11px; padding: 2px 7px; border-radius: 10px; }
+  .badge.warn { background: #fef3c7; color: var(--warn); }
+  .badge.draft { background: #e0e7ff; color: var(--brand-dark); }
+  .foot { text-align: center; font-size: 11px; color: var(--muted); padding: 4px 0 16px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Web-to-BC Order Agent</h1>
+  <span class="tag">เดโม · ข้อมูลจำลอง</span>
+</header>
+
+<div class="wrap">
+  <!-- ฝั่งลูกค้า -->
+  <div class="panel">
+    <div class="panel-head">
+      <span>💬 ฝั่งลูกค้า</span>
+      <span class="sub">ลูกค้า:
+        <select id="custSelect"></select>
+      </span>
+    </div>
+    <div class="chat" id="chat"></div>
+    <div class="chat-input">
+      <input id="input" placeholder="พิมพ์สั่งของ เช่น เอาน้ำดื่มขวดเล็ก 50 แพ็ค" autocomplete="off">
+      <button id="sendBtn">ส่ง</button>
+    </div>
+  </div>
+
+  <!-- ฝั่งแอดมิน -->
+  <div class="panel">
+    <div class="panel-head">
+      <span>🧾 ฝั่งแอดมิน — ออเดอร์รออนุมัติ</span>
+      <span class="sub" id="queueCount">0 รายการ</span>
+    </div>
+    <div class="queue" id="queue">
+      <div class="empty">ยังไม่มีออเดอร์<br>ลองสั่งของทางซ้ายดู</div>
+    </div>
+  </div>
+</div>
+<div class="foot">โครงเดโม — เวอร์ชันจริงจะเปลี่ยนสมองจำลองเป็น Claude API และดึงข้อมูลจาก Business Central ผ่าน MCP</div>
+
+<script>
+/* ============================================================
+   ข้อมูลจำลอง (เวอร์ชันจริงมาจาก Business Central)
+   ============================================================ */
+const ITEMS = [
+  // no, ชื่อ, คำค้น(ชื่อเล่น), ราคา/หน่วย, สต็อก
+  { no: "W-600",  name: "น้ำดื่ม 600ml (แพ็ค 12)", keys: ["น้ำดื่ม","น้ำเปล่า","น้ำขวดเล็ก","น้ำ600"], price: 55,  stock: 800 },
+  { no: "W-1500", name: "น้ำดื่ม 1500ml (แพ็ค 6)",  keys: ["น้ำขวดใหญ่","น้ำ1500","น้ำใหญ่"],           price: 48,  stock: 500 },
+  { no: "S-COLA", name: "น้ำอัดลม โคล่า (ลัง 24)",   keys: ["โคล่า","โค้ก","น้ำอัดลม","cola"],           price: 240, stock: 120 },
+  { no: "S-SODA", name: "โซดา (ลัง 24)",             keys: ["โซดา","soda"],                              price: 180, stock: 200 },
+  { no: "SNK-01", name: "มันฝรั่งทอด (กล่อง 30 ซอง)", keys: ["มันฝรั่ง","ขนม","มันทอด"],                 price: 320, stock: 60  },
+  { no: "TIS-01", name: "กระดาษทิชชู่ (แพ็ค 24 ม้วน)", keys: ["ทิชชู่","กระดาษชำระ","ทิชชู"],            price: 150, stock: 300 },
+];
+
+const CUSTOMERS = [
+  // no, ชื่อ, วงเงินคงเหลือ(ซ่อนจากลูกค้า), บล็อกไหม
+  { no: "C001", name: "ร้านสมชายมินิมาร์ท",  creditLeft: 20000, blocked: false },
+  { no: "C002", name: "ร้านป้าแดงของชำ",      creditLeft: 3000,  blocked: false },
+  { no: "C003", name: "บริษัท รุ่งเรือง จำกัด", creditLeft: 80000, blocked: false },
+  { no: "C004", name: "ร้านค้างชำระ (ถูกบล็อก)", creditLeft: 0,   blocked: true  },
+];
+
+const MAX_ORDERS_PER_DAY = 3;   // กฎธุรกิจ: จำกัดออเดอร์/ลูกค้า/วัน
+const APPROVAL_LIMIT = 30000;   // ยอดเกินนี้ต้องหัวหน้าอนุมัติ
+
+/* ============================================================
+   สถานะ
+   ============================================================ */
+let currentCust = CUSTOMERS[0];
+let draftCart = [];        // ตะกร้าที่กำลังคุย: {item, qty}
+let orders = [];           // ออเดอร์รออนุมัติ
+let orderSeq = 1000;
+const ordersToday = {};    // นับออเดอร์ต่อลูกค้า
+
+/* ============================================================
+   ตั้งค่าหน้าจอ
+   ============================================================ */
+const chatEl = document.getElementById("chat");
+const inputEl = document.getElementById("input");
+const custSel = document.getElementById("custSelect");
+
+CUSTOMERS.forEach((c, i) => {
+  const o = document.createElement("option");
+  o.value = i; o.textContent = c.name;
+  custSel.appendChild(o);
+});
+custSel.onchange = () => {
+  currentCust = CUSTOMERS[custSel.value];
+  draftCart = [];
+  botSay(`สวัสดีครับ ร้าน${currentCust.name} 😊\nพิมพ์สั่งของได้เลย เช่น "เอาน้ำดื่ม 50 แพ็ค กับทิชชู่ 10 แพ็ค"`);
+};
+
+document.getElementById("sendBtn").onclick = handleSend;
+inputEl.addEventListener("keydown", e => { if (e.key === "Enter") handleSend(); });
+
+/* ============================================================
+   ข้อความในแชท
+   ============================================================ */
+function addMsg(text, cls) {
+  const d = document.createElement("div");
+  d.className = "msg " + cls;
+  d.textContent = text;
+  chatEl.appendChild(d);
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+const userSay = t => addMsg(t, "user");
+const botSay  = t => addMsg(t, "bot");
+const sysSay  = t => addMsg(t, "sys");
+
+/* ============================================================
+   "สมอง" จำลอง — เวอร์ชันจริงคือ Claude
+   หน้าที่: อ่านข้อความ หาสินค้า + จำนวน
+   หมายเหตุความปลอดภัย: โค้ดเป็นคนใส่รหัสลูกค้า (currentCust)
+   ไม่ใช่ AI — AI ขอข้อมูลลูกค้าคนอื่นไม่ได้
+   ============================================================ */
+function parseOrder(text) {
+  const found = [];
+  const lower = text.toLowerCase();
+  ITEMS.forEach(item => {
+    for (const key of item.keys) {
+      const idx = lower.indexOf(key.toLowerCase());
+      if (idx === -1) continue;
+      // หาตัวเลขใกล้ๆ คำค้น
+      const around = text.slice(Math.max(0, idx - 15), idx + key.length + 15);
+      const m = around.match(/\d+/);
+      const qty = m ? parseInt(m[0], 10) : 1;
+      found.push({ item, qty });
+      break; // เจอคำค้นตัวแรกของสินค้านี้พอ
+    }
+  });
+  return found;
+}
+
+function handleSend() {
+  const text = inputEl.value.trim();
+  if (!text) return;
+  inputEl.value = "";
+  userSay(text);
+
+  // คำยืนยัน
+  if (/^(ยืนยัน|ok|โอเค|ตกลง|เอาเลย|confirm)/i.test(text) && draftCart.length) {
+    createOrder();
+    return;
+  }
+  // ยกเลิก
+  if (/^(ยกเลิก|cancel|ไม่เอา)/i.test(text)) {
+    draftCart = [];
+    botSay("ยกเลิกรายการแล้วครับ พิมพ์สั่งใหม่ได้เลย");
+    return;
+  }
+
+  const items = parseOrder(text);
+  if (!items.length) {
+    botSay("ขอโทษครับ ไม่เจอสินค้าที่ตรงกับที่พิมพ์มา\nลองพิมพ์ชื่อสินค้า เช่น น้ำดื่ม โคล่า ทิชชู่ ขนม");
+    return;
+  }
+  draftCart = items;
+  quoteBack();
+}
+
+function quoteBack() {
+  let lines = [], total = 0, stockWarn = [];
+  draftCart.forEach(({ item, qty }) => {
+    const sub = item.price * qty;
+    total += sub;
+    lines.push(`• ${item.name} × ${qty} = ${sub.toLocaleString()} บาท`);
+    if (qty > item.stock) stockWarn.push(item.name);
+  });
+
+  let msg = "รายการที่สั่ง:\n" + lines.join("\n") + `\n\nรวม ${total.toLocaleString()} บาท`;
+
+  if (stockWarn.length) {
+    msg += `\n\n⚠️ สินค้าไม่พอ: ${stockWarn.join(", ")} — แอดมินจะติดต่อกลับ`;
+  }
+  // เช็กวงเงิน — ตอบแค่ผ่าน/ไม่ผ่าน ไม่บอกตัวเลขวงเงิน
+  if (currentCust.blocked) {
+    msg += `\n\n🚫 บัญชีนี้ค้างชำระ กรุณาติดต่อฝ่ายขายครับ`;
+    botSay(msg);
+    draftCart = [];
+    return;
+  }
+  if (total > currentCust.creditLeft) {
+    msg += `\n\n🚫 ยอดเกินวงเงินเครดิต กรุณาติดต่อฝ่ายขายครับ`;
+    botSay(msg);
+    draftCart = [];
+    return;
+  }
+  msg += `\n\nพิมพ์ "ยืนยัน" เพื่อส่งออเดอร์ครับ`;
+  botSay(msg);
+}
+
+function createOrder() {
+  // กฎธุรกิจ: จำกัดออเดอร์ต่อวัน (เวอร์ชันจริงบังคับใน BC ด้วย)
+  const used = ordersToday[currentCust.no] || 0;
+  if (used >= MAX_ORDERS_PER_DAY) {
+    botSay(`วันนี้สั่งครบ ${MAX_ORDERS_PER_DAY} ออเดอร์แล้วครับ กรุณาสั่งใหม่พรุ่งนี้`);
+    draftCart = [];
+    return;
+  }
+
+  let total = 0;
+  const lines = draftCart.map(({ item, qty }) => {
+    total += item.price * qty;
+    return { name: item.name, qty, price: item.price };
+  });
+
+  const order = {
+    id: ++orderSeq,
+    cust: currentCust.name,
+    lines,
+    total,
+    needSupervisor: total > APPROVAL_LIMIT,
+    time: new Date().toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" }),
+  };
+  orders.unshift(order);
+  ordersToday[currentCust.no] = used + 1;
+  renderQueue();
+
+  botSay(`✅ สร้างออเดอร์ #${order.id} เรียบร้อย (ยอด ${total.toLocaleString()} บาท)\nรอแอดมินอนุมัติสักครู่นะครับ`);
+  draftCart = [];
+}
+
+/* ============================================================
+   ฝั่งแอดมิน
+   ============================================================ */
+function renderQueue() {
+  const q = document.getElementById("queue");
+  document.getElementById("queueCount").textContent = orders.length + " รายการ";
+  if (!orders.length) {
+    q.innerHTML = '<div class="empty">ยังไม่มีออเดอร์<br>ลองสั่งของทางซ้ายดู</div>';
+    return;
+  }
+  q.innerHTML = "";
+  orders.forEach(o => {
+    const div = document.createElement("div");
+    div.className = "order";
+    const rows = o.lines.map(l =>
+      `<tr><td>${l.name}</td><td class="q">×${l.qty}</td><td class="p">${(l.price*l.qty).toLocaleString()}</td></tr>`
+    ).join("");
+    div.innerHTML = `
+      <div class="top">
+        <span class="cust">${o.cust}</span>
+        <span>
+          <span class="badge draft">ร่าง #${o.id}</span>
+          ${o.needSupervisor ? '<span class="badge warn">รอหัวหน้าอนุมัติ</span>' : ''}
+        </span>
+      </div>
+      <table>${rows}</table>
+      <div class="total">รวม ${o.total.toLocaleString()} บาท</div>
+      <div class="acts">
+        <button class="btn-ok" onclick="approve(${o.id})">อนุมัติ</button>
+        <button class="btn-no" onclick="reject(${o.id})">ปฏิเสธ</button>
+      </div>`;
+    q.appendChild(div);
+  });
+}
+
+function approve(id) {
+  const o = orders.find(x => x.id === id);
+  if (!o) return;
+  orders = orders.filter(x => x.id !== id);
+  renderQueue();
+  sysSay(`— แอดมินอนุมัติออเดอร์ #${id} —`);
+  botSay(`🎉 ออเดอร์ #${id} ได้รับการอนุมัติแล้ว! เราจะจัดส่งให้เร็วที่สุดครับ`);
+}
+function reject(id) {
+  orders = orders.filter(x => x.id !== id);
+  renderQueue();
+  sysSay(`— แอดมินปฏิเสธออเดอร์ #${id} —`);
+  botSay(`ออเดอร์ #${id} ไม่ผ่านการอนุมัติครับ ฝ่ายขายจะติดต่อกลับ`);
+}
+
+/* เริ่มต้น */
+botSay(`สวัสดีครับ ร้าน${currentCust.name} 😊\nพิมพ์สั่งของได้เลย เช่น "เอาน้ำดื่ม 50 แพ็ค กับทิชชู่ 10 แพ็ค"`);
+</script>
+</body>
+</html>
