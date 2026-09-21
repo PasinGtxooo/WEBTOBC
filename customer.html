@@ -51,10 +51,12 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="env.js"></script>
 <script src="config.js"></script>
 <script src="shared.js"></script>
 <script>
 let customers=[], items=[], currentCust=null, draftCart=[];
+let pendingQueue=[];   // คิวรายการที่กำกวม รอลูกค้าเลือก
 const myOrders={};   // {orderId: lastStatus} ไว้รับข้อความตอบกลับ
 
 const chatEl=document.getElementById("chat");
@@ -87,17 +89,71 @@ inputEl.addEventListener("keydown",e=>{if(e.key==="Enter")handleSend();});
 async function handleSend(){
   const text=inputEl.value.trim(); if(!text||!currentCust)return;
   inputEl.value=""; userSay(text);
+  if(/^(ยกเลิก|cancel|ไม่เอา)/i.test(text)){draftCart=[];pendingQueue=[];botSay("ยกเลิกรายการแล้วครับ พิมพ์สั่งใหม่ได้เลย");return;}
+
+  // ถ้ากำลังรอลูกค้าเลือกสินค้าที่กำกวมอยู่
+  if(pendingQueue.length){
+    const g=pendingQueue[0];
+    const chosen=resolveChoice(text,g.options);
+    if(!chosen){botSay("เลือกไม่ถูกครับ พิมพ์เลขตัวเลือก เช่น 1 หรือ 2");return;}
+    draftCart.push({item:chosen,qty:g.qty});
+    pendingQueue.shift();
+    askNextOrQuote();
+    return;
+  }
+
   if(/^(ยืนยัน|ok|โอเค|ตกลง|เอาเลย|confirm)/i.test(text)&&draftCart.length){await createOrder();return;}
-  if(/^(ยกเลิก|cancel|ไม่เอา)/i.test(text)){draftCart=[];botSay("ยกเลิกรายการแล้วครับ พิมพ์สั่งใหม่ได้เลย");return;}
-  const found=parseOrder(text,items);
-  if(!found.length){botSay("ขอโทษครับ ไม่เจอสินค้าที่ตรงกับที่พิมพ์มา\nลองพิมพ์ชื่อสินค้า เช่น น้ำดื่ม โคล่า ทิชชู่ ขนม");return;}
-  draftCart=found; quoteBack();
+
+  // เลือกสมอง: AI (ผ่าน /api/chat) หรือ ตัวจับคำในเครื่อง
+  let lines, ambiguous;
+  if(typeof USE_AI!=="undefined" && USE_AI){
+    try{
+      const ai=await askAI(text);
+      if(ai.reply && !(ai.lines&&ai.lines.length) && !(ai.ambiguous&&ai.ambiguous.length)){ botSay(ai.reply); return; }
+      const byNo=no=>items.find(i=>i.no===no);
+      lines=(ai.lines||[]).map(l=>({item:byNo(l.no),qty:l.qty})).filter(x=>x.item);
+      ambiguous=(ai.ambiguous||[]).map(a=>({options:(a.options||[]).map(byNo).filter(Boolean),qty:a.qty})).filter(a=>a.options.length);
+    }catch(e){
+      botSay("⚠️ AI ไม่พร้อม ใช้โหมดปกติแทน ("+e.message+")");
+      ({lines,ambiguous}=analyze(text,items));
+    }
+  }else{
+    ({lines,ambiguous}=analyze(text,items));
+  }
+
+  if(!lines.length && !ambiguous.length){
+    botSay("ขอโทษครับ ไม่เจอสินค้าที่ตรงกับที่พิมพ์มา\nลองพิมพ์ชื่อสินค้า เช่น น้ำดื่ม โคล่า ทิชชู่ มะม่วง");return;
+  }
+  draftCart=lines.slice();
+  pendingQueue=ambiguous.slice();
+  askNextOrQuote();
+}
+
+// เรียก AI ผ่าน Vercel Function (คืน {lines, ambiguous, reply})
+async function askAI(text){
+  const res=await fetch("/api/chat",{
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({ message:text, items:items.map(i=>({no:i.no,name:i.name,keys:i.keys})) })
+  });
+  if(!res.ok){ const j=await res.json().catch(()=>({})); throw new Error(j.error||("HTTP "+res.status)); }
+  return await res.json();
+}
+
+// ถ้ายังมีของกำกวมค้างอยู่ให้ถาม ไม่งั้นสรุปราคา
+function askNextOrQuote(){
+  if(pendingQueue.length){
+    const g=pendingQueue[0];
+    const opts=g.options.map((it,i)=>`${i+1}) ${nameEmoji(it.name)} ${it.name} — ${it.price.toLocaleString()} บาท`).join("\n");
+    botSay(`รายการนี้มีหลายแบบครับ อยากได้อันไหน (พิมพ์เลข)\n${opts}`);
+  }else{
+    quoteBack();
+  }
 }
 
 function quoteBack(){
   let lines=[],total=0,stockWarn=[];
   draftCart.forEach(({item,qty})=>{const sub=item.price*qty;total+=sub;
-    lines.push(`• ${item.name} × ${qty} = ${sub.toLocaleString()} บาท`);
+    lines.push(`${nameEmoji(item.name)} ${item.name} × ${qty} = ${sub.toLocaleString()} บาท`);
     if(qty>item.stock)stockWarn.push(item.name);});
   let msg="รายการที่สั่ง:\n"+lines.join("\n")+`\n\nรวม ${total.toLocaleString()} บาท`;
   if(stockWarn.length)msg+=`\n\n⚠️ สินค้าไม่พอ: ${stockWarn.join(", ")} — แอดมินจะติดต่อกลับ`;

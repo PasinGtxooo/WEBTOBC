@@ -50,21 +50,60 @@ function nameEmoji(name){
   return"📦";
 }
 
-/* ----- "สมอง" จำลอง: หาสินค้า + จำนวนจากข้อความ (เวอร์ชันจริง = Claude) ----- */
-function parseOrder(text, items){
-  const found=[]; const lower=text.toLowerCase();
+/* ----- "สมอง" จำลอง: หาสินค้า + จำนวน + ตรวจความกำกวม (เวอร์ชันจริง = Claude) ----- */
+
+// หาเลขจำนวนใกล้ๆ ชื่อสินค้า (ดูหลังก่อน แล้วค่อยหน้า)
+function qtyNear(text, endIdx, startIdx){
+  let m=text.slice(endIdx, endIdx+12).match(/\d+/);
+  if(!m){ const bm=text.slice(Math.max(0,startIdx-12),startIdx).match(/\d+/g); if(bm) m=[bm[bm.length-1]]; }
+  return m ? parseInt(m[0],10) : 1;
+}
+
+// หาสินค้าทุกตัวที่คำค้นตรงกับข้อความ (เก็บตำแหน่ง + ความยาวคำที่ match)
+function findMatches(text, items){
+  const lower=text.toLowerCase();
+  const matches=[];
   items.forEach(item=>{
     const keys = Array.isArray(item.keys) ? item.keys : JSON.parse(item.keys||"[]");
+    let best=null;
     for(const key of keys){
       const idx=lower.indexOf(key.toLowerCase());
       if(idx===-1)continue;
-      const around=text.slice(Math.max(0,idx-15),idx+key.length+15);
-      const m=around.match(/\d+/);
-      found.push({item,qty:m?parseInt(m[0],10):1});
-      break;
+      if(!best || key.length>best.len) best={idx, len:key.length}; // เอาคำที่ยาวสุด = เจาะจงสุด
     }
+    if(best) matches.push({item, idx:best.idx, len:best.len});
   });
-  return found;
+  return matches;
+}
+
+// วิเคราะห์ข้อความ -> รายการที่ชัดเจน (lines) + รายการที่กำกวม (ambiguous)
+function analyze(text, items){
+  const matches=findMatches(text, items).sort((a,b)=>a.idx-b.idx);
+  const clusters=[];
+  matches.forEach(mt=>{
+    // จัดกลุ่มคำที่ทับตำแหน่งเดียวกัน (= ลูกค้าพูดถึงของชิ้นเดียว)
+    let c=clusters.find(c=> mt.idx < c.end && (mt.idx+mt.len) > c.start);
+    if(c){ c.members.push({item:mt.item,len:mt.len}); c.start=Math.min(c.start,mt.idx); c.end=Math.max(c.end,mt.idx+mt.len); }
+    else clusters.push({members:[{item:mt.item,len:mt.len}], start:mt.idx, end:mt.idx+mt.len});
+  });
+  const lines=[], ambiguous=[];
+  clusters.forEach(c=>{
+    const qty=qtyNear(text, c.end, c.start);
+    const maxLen=Math.max(...c.members.map(m=>m.len));
+    const cands=c.members.filter(m=>m.len===maxLen).map(m=>m.item); // ตัวที่ match เจาะจงสุด
+    if(cands.length===1) lines.push({item:cands[0], qty});
+    else ambiguous.push({options:cands, qty});   // เจอหลายตัวเท่ากัน = กำกวม ต้องถาม
+  });
+  return {lines, ambiguous};
+}
+
+// เลือกจากตัวเลือก (พิมพ์เลข หรือพิมพ์ชื่อ)
+function resolveChoice(text, options){
+  const n=parseInt(text.trim(),10);
+  if(n>=1 && n<=options.length) return options[n-1];
+  const t=text.toLowerCase().trim();
+  if(t) return options.find(o=> o.name.toLowerCase().includes(t) || t.includes(o.name.toLowerCase())) || null;
+  return null;
 }
 
 /* ----- ตัวช่วยคุยกับฐานข้อมูล (ทุกตัวโยน error ถ้าพลาด) ----- */

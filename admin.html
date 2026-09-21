@@ -54,6 +54,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="env.js"></script>
 <script src="config.js"></script>
 <script src="shared.js"></script>
 <script>
@@ -68,7 +69,7 @@ async function render(){
   q.innerHTML="";
   orders.forEach(o=>{
     const div=document.createElement("div");div.className="order";
-    const rows=o.lines.map(l=>`<tr><td>${l.name}</td><td class="q">×${l.qty}</td><td class="p">${(l.price*l.qty).toLocaleString()}</td></tr>`).join("");
+    const rows=o.lines.map(l=>`<tr><td>${nameEmoji(l.name)} ${l.name}</td><td class="q">×${l.qty}</td><td class="p">${(l.price*l.qty).toLocaleString()}</td></tr>`).join("");
     const t=new Date(o.created_at).toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit"});
     div.innerHTML=`
       <div class="top">

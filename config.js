@@ -4,5 +4,5 @@
    หาค่าได้จาก: Supabase → Project Settings → API
    ไฟล์นี้อยู่ใน .gitignore แล้ว (ไม่ขึ้น Git)
    ============================================================ */
-const SUPABASE_URL      = "https://xxxxxxxxxxxx.supabase.co";   // <-- แก้เป็นของคุณ
-const SUPABASE_ANON_KEY = "eyJhbGciOi...";                       // <-- แก้เป็นของคุณ (anon public key)
+const SUPABASE_URL      = ENV.SUPABASE_URL;   // <-- แก้เป็นของคุณ
+const SUPABASE_ANON_KEY = ENV.SUPABASE_ANON_KEY;                       // <-- แก้เป็นของคุณ (anon public key)
