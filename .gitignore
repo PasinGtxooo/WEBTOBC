@@ -1,6 +1,8 @@
 # ค่าลับ ห้ามขึ้น Git
 .env
-config.js
+
+# หมายเหตุ: config.js ต้องขึ้น Git ด้วย ไม่งั้น Vercel จะไม่มีค่า Supabase
+# (anon key เปิดเผยในเว็บได้ตามดีไซน์ ถ้าตั้ง RLS ไว้)
 
 # ของ Python (เวอร์ชันจริง)
 __pycache__/
