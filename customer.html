@@ -108,15 +108,18 @@ function quoteBack(){
 }
 
 async function createOrder(){
-  const used=await DB.countToday(currentCust.no);
-  if(used>=MAX_ORDERS_PER_DAY){botSay(`วันนี้สั่งครบ ${MAX_ORDERS_PER_DAY} ออเดอร์แล้วครับ กรุณาสั่งใหม่พรุ่งนี้`);draftCart=[];return;}
-  let total=0;
-  const lines=draftCart.map(({item,qty})=>{total+=item.price*qty;return{name:item.name,qty,price:item.price};});
-  const order=await DB.addOrder({cust_no:currentCust.no,cust_name:currentCust.name,lines,total,need_supervisor:total>APPROVAL_LIMIT});
-  if(!order){botSay("⚠️ บันทึกออเดอร์ไม่สำเร็จ ลองใหม่อีกครั้งครับ");return;}
-  myOrders[order.id]="draft";
-  botSay(`✅ สร้างออเดอร์ #${order.id} เรียบร้อย (ยอด ${total.toLocaleString()} บาท)\nรอแอดมินอนุมัติสักครู่นะครับ`);
-  draftCart=[];
+  try{
+    const used=await DB.countToday(currentCust.no);
+    if(used>=MAX_ORDERS_PER_DAY){botSay(`วันนี้สั่งครบ ${MAX_ORDERS_PER_DAY} ออเดอร์แล้วครับ กรุณาสั่งใหม่พรุ่งนี้`);draftCart=[];return;}
+    let total=0;
+    const lines=draftCart.map(({item,qty})=>{total+=item.price*qty;return{name:item.name,qty,price:item.price};});
+    const order=await DB.addOrder({cust_no:currentCust.no,cust_name:currentCust.name,lines,total,need_supervisor:total>APPROVAL_LIMIT});
+    myOrders[order.id]="draft";
+    botSay(`✅ สร้างออเดอร์ #${order.id} เรียบร้อย (ยอด ${total.toLocaleString()} บาท)\nรอแอดมินอนุมัติสักครู่นะครับ`);
+    draftCart=[];
+  }catch(e){
+    botSay("⚠️ บันทึกออเดอร์ไม่สำเร็จ:\n"+e.message+"\n(ดูรายละเอียดใน Console กด F12)");
+  }
 }
 
 /* เช็กสถานะออเดอร์ของตัวเองทุก 1.5 วินาที */
