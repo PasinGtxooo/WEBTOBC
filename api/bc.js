@@ -27,17 +27,19 @@ async function getToken() {
 }
 
 // เรียก unbound action ของ codeunit (คืนค่า value ที่ parse แล้ว)
-async function callBC(action, inputObj) {
+// noInput = true สำหรับ action ที่ไม่มีพารามิเตอร์ (เช่น TestConnect)
+async function callBC(action, inputObj, noInput) {
   const tenant = process.env.BC_TENANT_ID;
   const env = process.env.BC_ENVIRONMENT;
   const company = process.env.BC_COMPANY;
   const token = await getToken();
 
   const url = `https://api.businesscentral.dynamics.com/v2.0/${tenant}/${env}/ODataV4/QUICKWebAgent_${action}?company=${encodeURIComponent(company)}`;
+  const body = noInput ? {} : { input: inputObj === undefined ? "" : JSON.stringify(inputObj) };
   const res = await fetch(url, {
     method: "POST",
     headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-    body: JSON.stringify({ input: inputObj === undefined ? "" : JSON.stringify(inputObj) }),
+    body: JSON.stringify(body),
   });
   const json = await res.json();
   if (json.error) throw new Error(json.error.message || JSON.stringify(json.error));
@@ -59,7 +61,7 @@ export default async function handler(req, res) {
       return res.status(200).json(await callBC("createOrder", payload));
     }
     if (action === "test") {
-      return res.status(200).json(await callBC("TestConnect"));
+      return res.status(200).json(await callBC("TestConnect", undefined, true));
     }
     return res.status(400).json({ error: "action ไม่ถูกต้อง" });
   } catch (e) {
