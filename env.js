@@ -13,3 +13,16 @@ const ENV = {
 //   true  = ใช้ AI จริง — ต้อง deploy บน Vercel และตั้ง GROQ_API_KEY ใน Vercel Environment Variables
 //   (GROQ key อยู่ฝั่งเซิร์ฟเวอร์เท่านั้น ห้ามใส่ในไฟล์นี้)
 const USE_AI = false;
+
+// เปิด/ปิด Business Central เป็นแหล่งข้อมูล (ผ่าน /api/bc)
+//   false = ใช้ Supabase (เดโมเดิม)
+//   true  = ดึงสินค้า + สร้างออเดอร์ที่ Business Central จริง
+//   ต้อง deploy บน Vercel และตั้ง BC_TENANT_ID / BC_ENVIRONMENT / BC_COMPANY /
+//   BC_CLIENT_ID / BC_CLIENT_SECRET ใน Vercel Environment Variables
+const USE_BC = false;
+
+// รายชื่อลูกค้าสำหรับ dropdown ในโหมด BC (Customer No. ต้องตรงกับใน BC จริง)
+const BC_CUSTOMERS = [
+  { no: "C001", name: "ลูกค้า C001" },
+  { no: "C002", name: "ลูกค้า C002" },
+];

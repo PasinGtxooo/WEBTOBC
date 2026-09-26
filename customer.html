@@ -70,16 +70,37 @@ function greet(){botSay(`สวัสดีครับ ร้าน${currentCus
 
 async function init(){
   try{
-    customers=await DB.customers();
-    items=await DB.items();
-    if(!customers.length){botSay("⚠️ ยังไม่มีข้อมูลในฐานข้อมูล — รัน schema.sql ใน Supabase ก่อนครับ");return;}
+    if(typeof USE_BC!=="undefined" && USE_BC){
+      // โหมด Business Central — ดึงสินค้าจาก BC ผ่าน /api/bc
+      const j=await bcCall("getItems");
+      items=(j.items||[]).map(i=>({
+        no:i.no, name:i.name,
+        keys:(i.keywords||"").split(",").map(s=>s.trim()).filter(Boolean),
+        price:i.unitPrice, stock:i.inventory
+      }));
+      customers=(typeof BC_CUSTOMERS!=="undefined"?BC_CUSTOMERS:[]).map(c=>({no:c.no,name:c.name,credit_left:Infinity,blocked:false}));
+      if(!customers.length){botSay("⚠️ ยังไม่ได้ตั้งรายชื่อลูกค้าใน BC_CUSTOMERS (env.js)");return;}
+    }else{
+      // โหมด Supabase
+      customers=await DB.customers();
+      items=await DB.items();
+      if(!customers.length){botSay("⚠️ ยังไม่มีข้อมูลในฐานข้อมูล — รัน schema.sql ใน Supabase ก่อนครับ");return;}
+    }
     customers.forEach((c,i)=>{const o=document.createElement("option");o.value=i;o.textContent=c.name;custSel.appendChild(o);});
     currentCust=customers[0];
     inputEl.disabled=false; sendBtn.disabled=false;
     greet();
   }catch(e){
-    botSay("⚠️ ต่อ Supabase ไม่ได้ — เช็กค่าใน config.js ครับ\n"+e.message);
+    botSay("⚠️ โหลดข้อมูลไม่ได้:\n"+e.message);
   }
+}
+
+// เรียกตัวกลาง BC (/api/bc)
+async function bcCall(action, payload){
+  const res=await fetch("/api/bc",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action,payload})});
+  const j=await res.json();
+  if(j.error) throw new Error(j.error);
+  return j;
 }
 
 custSel.onchange=()=>{currentCust=customers[custSel.value];draftCart=[];greet();};
@@ -157,14 +178,29 @@ function quoteBack(){
     if(qty>item.stock)stockWarn.push(item.name);});
   let msg="รายการที่สั่ง:\n"+lines.join("\n")+`\n\nรวม ${total.toLocaleString()} บาท`;
   if(stockWarn.length)msg+=`\n\n⚠️ สินค้าไม่พอ: ${stockWarn.join(", ")} — แอดมินจะติดต่อกลับ`;
-  // เช็กวงเงิน — ตอบแค่ผ่าน/ไม่ผ่าน ไม่บอกตัวเลข
-  if(currentCust.blocked){botSay(msg+"\n\n🚫 บัญชีนี้ค้างชำระ กรุณาติดต่อฝ่ายขายครับ");draftCart=[];return;}
-  if(total>currentCust.credit_left){botSay(msg+"\n\n🚫 ยอดเกินวงเงินเครดิต กรุณาติดต่อฝ่ายขายครับ");draftCart=[];return;}
+  // เช็กวงเงิน (โหมด Supabase เท่านั้น; โหมด BC เช็กตอนยืนยันผ่าน getCustomerCheck)
+  if(!(typeof USE_BC!=="undefined" && USE_BC)){
+    if(currentCust.blocked){botSay(msg+"\n\n🚫 บัญชีนี้ค้างชำระ กรุณาติดต่อฝ่ายขายครับ");draftCart=[];return;}
+    if(total>currentCust.credit_left){botSay(msg+"\n\n🚫 ยอดเกินวงเงินเครดิต กรุณาติดต่อฝ่ายขายครับ");draftCart=[];return;}
+  }
   botSay(msg+`\n\nพิมพ์ "ยืนยัน" เพื่อส่งออเดอร์ครับ`);
 }
 
 async function createOrder(){
   try{
+    // ---- โหมด Business Central ----
+    if(typeof USE_BC!=="undefined" && USE_BC){
+      let total=0;
+      const lines=draftCart.map(({item,qty})=>{total+=item.price*qty;return{itemNo:item.no,qty};});
+      // เช็กวงเงินฝั่ง BC (ตอบแค่ผ่าน/ไม่ผ่าน)
+      const chk=await bcCall("getCustomerCheck",{customerNo:currentCust.no,amount:total});
+      if(chk && chk.ok===false){botSay("🚫 "+(chk.message||"สั่งไม่ได้ครับ"));draftCart=[];return;}
+      const r=await bcCall("createOrder",{customerNo:currentCust.no,source:"web",lines});
+      botSay(`✅ สร้างออเดอร์ #${r.orderNo} ใน Business Central แล้ว (ยอด ${total.toLocaleString()} บาท)\nรอแอดมินอนุมัติในหน้า Web Orders ของ BC ครับ`);
+      draftCart=[];
+      return;
+    }
+    // ---- โหมด Supabase (เดิม) ----
     const used=await DB.countToday(currentCust.no);
     if(used>=MAX_ORDERS_PER_DAY){botSay(`วันนี้สั่งครบ ${MAX_ORDERS_PER_DAY} ออเดอร์แล้วครับ กรุณาสั่งใหม่พรุ่งนี้`);draftCart=[];return;}
     let total=0;
