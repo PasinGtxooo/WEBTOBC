@@ -60,6 +60,9 @@ export default async function handler(req, res) {
     if (action === "createOrder") {
       return res.status(200).json(await callBC("createOrder", payload));
     }
+    if (action === "createSalesOrder") {
+      return res.status(200).json(await callBC("createSalesOrder", payload));
+    }
     if (action === "test") {
       return res.status(200).json(await callBC("TestConnect", undefined, true));
     }
