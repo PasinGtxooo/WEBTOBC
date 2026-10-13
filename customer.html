@@ -78,8 +78,14 @@ async function init(){
         keys:(i.keywords||"").split(",").map(s=>s.trim()).filter(Boolean),
         price:i.unitPrice, stock:i.inventory
       }));
-      customers=(typeof BC_CUSTOMERS!=="undefined"?BC_CUSTOMERS:[]).map(c=>({no:c.no,name:c.name,credit_left:Infinity,blocked:false}));
-      if(!customers.length){botSay("⚠️ ยังไม่ได้ตั้งรายชื่อลูกค้าใน BC_CUSTOMERS (env.js)");return;}
+      // ดึงลูกค้าจาก BC จริง (ถ้าไม่ได้ ใช้ BC_CUSTOMERS เป็นสำรอง)
+      let custList=[];
+      try{ const jc=await bcCall("getCustomers"); custList=jc.customers||[]; }catch(e){ custList=[]; }
+      if(custList.length)
+        customers=custList.map(c=>({no:c.no,name:c.name,credit_left:Infinity,blocked:false}));
+      else
+        customers=(typeof BC_CUSTOMERS!=="undefined"?BC_CUSTOMERS:[]).map(c=>({no:c.no,name:c.name,credit_left:Infinity,blocked:false}));
+      if(!customers.length){botSay("⚠️ ไม่พบลูกค้าใน BC (เช็กว่ามีลูกค้าที่ไม่ถูกบล็อก)");return;}
     }else{
       // โหมด Supabase
       customers=await DB.customers();

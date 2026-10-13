@@ -54,6 +54,9 @@ export default async function handler(req, res) {
     if (action === "getItems") {
       return res.status(200).json({ items: await callBC("getItems") });
     }
+    if (action === "getCustomers") {
+      return res.status(200).json({ customers: await callBC("getCustomers") });
+    }
     if (action === "getCustomerCheck") {
       return res.status(200).json(await callBC("getCustomerCheck", payload));
     }
