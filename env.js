@@ -19,7 +19,7 @@ const USE_AI = false;
 //   true  = ดึงสินค้า + สร้างออเดอร์ที่ Business Central จริง
 //   ต้อง deploy บน Vercel และตั้ง BC_TENANT_ID / BC_ENVIRONMENT / BC_COMPANY /
 //   BC_CLIENT_ID / BC_CLIENT_SECRET ใน Vercel Environment Variables
-const USE_BC = false;
+const USE_BC = true;
 
 // รายชื่อลูกค้าสำหรับ dropdown ในโหมด BC (Customer No. ต้องตรงกับใน BC จริง)
 const BC_CUSTOMERS = [
