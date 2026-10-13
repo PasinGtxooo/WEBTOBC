@@ -201,8 +201,8 @@ async function createOrder(){
       // เช็กวงเงินฝั่ง BC (ตอบแค่ผ่าน/ไม่ผ่าน)
       const chk=await bcCall("getCustomerCheck",{customerNo:currentCust.no,amount:total});
       if(chk && chk.ok===false){botSay("🚫 "+(chk.message||"สั่งไม่ได้ครับ"));draftCart=[];return;}
-      const r=await bcCall("createSalesOrder",{customerNo:currentCust.no,lines});
-      botSay(`✅ สร้าง Sales Order ${r.salesOrderNo} ใน Business Central แล้ว (ยอด ${total.toLocaleString()} บาท)\nตรวจและ post ได้ในหน้า Sales Orders ของ BC ครับ`);
+      const r=await bcCall("createOrder",{customerNo:currentCust.no,source:"web",lines});
+      botSay(`✅ ส่งคำสั่งซื้อ #${r.orderNo} เรียบร้อย (ยอด ${total.toLocaleString()} บาท)\nรอแอดมินอนุมัติครับ เมื่ออนุมัติแล้วจะกลายเป็น Sales Order`);
       draftCart=[];
       return;
     }
