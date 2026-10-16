@@ -135,12 +135,12 @@ function editDist(a, b){
 // หาคำค้นในข้อความ: ตรงเป๊ะก่อน ถ้าไม่เจอค่อยหา "คำใกล้เคียง" (พิมพ์ผิด/ตกวรรณยุกต์)
 function findKey(text, key){
   const idx=text.indexOf(key);
-  if(idx>=0) return {idx, len:key.length};        // ตรงเป๊ะ
-  if(key.length<3) return null;
+  if(idx>=0) return {idx, len:key.length, fuzzy:false};  // ตรงเป๊ะ
+  if(key.length<4) return null;                   // คำสั้น (<4) ไม่เดาใกล้เคียง กัน "rog"≈"log"
   const tol = key.length<=4 ? 1 : 2;              // ยอมผิดได้ 1-2 ตัว
   for(let L=Math.max(2,key.length-1); L<=key.length+1; L++){
     for(let s=0; s+L<=text.length; s++){
-      if(editDist(text.substr(s,L), key) <= tol) return {idx:s, len:L};
+      if(editDist(text.substr(s,L), key) <= tol) return {idx:s, len:L, fuzzy:true};
     }
   }
   return null;
@@ -165,7 +165,7 @@ function findMatches(text, items){
     for(const key of keys){
       const k=key.toLowerCase();
       const hit=findKey(lower, k);
-      if(hit) matches.push({item, idx:hit.idx, len:hit.len, key:k}); // เก็บทุกคำที่เจอ (ทั่วไป+ยี่ห้อ)
+      if(hit) matches.push({item, idx:hit.idx, len:hit.len, key:k, fuzzy:hit.fuzzy}); // เก็บทุกคำที่เจอ
     }
   });
   return matches;
@@ -197,12 +197,15 @@ function analyze(text, items){
     const agg=new Map();
     c.members.forEach(m=>{
       let a=agg.get(m.item.no);
-      if(!a){ a={item:m.item, spans:new Set(), spec:0}; agg.set(m.item.no,a); }
+      if(!a){ a={item:m.item, spans:new Set(), spec:0, exact:0}; agg.set(m.item.no,a); }
       a.spans.add(m.idx);
       a.spec=Math.max(a.spec, 1/(cnt[m.key]||1));   // คำที่ของชิ้นเดียวมี = spec 1 (เจาะจงสุด)
+      if(!m.fuzzy) a.exact=1;                        // มี match ที่ตรงเป๊ะ
     });
-    // เลือกตัวที่ครอบคำได้มากสุด ก่อน แล้วค่อยดูความเจาะจง
+    // จัดอันดับ: ตรงเป๊ะ > ครอบคำได้มากสุด > เจาะจงสุด (ยี่ห้อ/รุ่น)
     let arr=[...agg.values()];
+    const maxExact=Math.max(...arr.map(a=>a.exact));
+    arr=arr.filter(a=>a.exact===maxExact);          // ตรงเป๊ะชนะใกล้เคียงเสมอ
     const maxCover=Math.max(...arr.map(a=>a.spans.size));
     arr=arr.filter(a=>a.spans.size===maxCover);
     const maxSpec=Math.max(...arr.map(a=>a.spec));
