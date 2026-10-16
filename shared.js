@@ -63,7 +63,7 @@ function catOf(item){
   return"📦 อื่นๆ";
 }
 
-/* สร้างข้อความรายการสินค้าแบบคนขาย (จัดเป็นหมวด + ราคา + คงเหลือ) */
+/* สร้างข้อความรายการสินค้าแบบคนขาย (จัดเป็นหมวด + ราคา) — บอกแค่ "มี" ไม่บอกจำนวนคงเหลือ */
 function catalogText(list){
   const groups={};
   list.forEach(i=>{ const c=catOf(i); (groups[c]=groups[c]||[]).push(i); });
@@ -72,12 +72,32 @@ function catalogText(list){
     out+=`\n${c}\n`;
     groups[c].forEach(i=>{
       const price=(i.price!=null)?` — ${i.price.toLocaleString()} บาท`:"";
-      const stock=(i.stock!=null)?` (เหลือ ${i.stock})`:"";
-      out+=`• ${i.name}${price}${stock}\n`;
+      out+=`• ${i.name}${price}\n`;
     });
   }
   out+=`\nสนใจตัวไหน พิมพ์ชื่อหรือยี่ห้อได้เลยครับ เช่น "เอา ${list[0].name} 1"`;
   return out.trim();
+}
+
+/* ----- โหมดแอดมิน: ของไม่พอ ช่วยคิดหาทางออกให้ลูกค้า ----- */
+// คืนข้อความเสนอทางเลือก: รับเท่าที่มี / รุ่นใกล้เคียงพร้อมส่ง / แอดมินช่วยจัดหาส่วนที่ขาด
+function shortSuggest(item, want, items){
+  const have=item.stock||0;
+  const emo=catOf(item).split(" ")[0];   // ไอคอนตามหมวด (🖱️/⌨️/...)
+  let msg=`ขออภัยครับ ${emo} ${item.name} ขอมา ${want} ชิ้น แต่ตอนนี้จัดให้ได้ ${have} ชิ้น`;
+  const opts=[];
+  if(have>0) opts.push(`รับ ${have} ชิ้นก่อนได้เลย (พิมพ์ "เอา ${item.name} ${have}")`);
+  // หารุ่นใกล้เคียงหมวดเดียวกันที่สต็อกพอกับที่ขอ (เรียงของเยอะสุดก่อน)
+  const cat=catOf(item);
+  const alt=items.filter(i=>i.no!==item.no && catOf(i)===cat && (i.stock||0)>=want)
+                 .sort((a,b)=>(b.stock||0)-(a.stock||0))
+                 .slice(0,2);
+  alt.forEach(a=>{
+    const p=(a.price!=null)?` (${a.price.toLocaleString()} บาท)`:"";
+    opts.push(`หรือรุ่นใกล้เคียงที่พร้อมส่ง ${want} ชิ้น: ${a.name}${p}`);
+  });
+  if(have<want) opts.push(`ส่วนที่ขาด เดี๋ยวแอดมินช่วยจัดหา/แจ้งเมื่อของเข้าให้ครับ`);
+  return msg + "\n" + opts.map(o=>"• "+o).join("\n");
 }
 
 /* ----- "สมอง" จำลอง: หาสินค้า + จำนวน + ตรวจความกำกวม (เวอร์ชันจริง = Claude) ----- */

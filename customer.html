@@ -220,7 +220,8 @@ function quoteBack(){
   let okLines=[],total=0,shortMsgs=[],newCart=[];
   draftCart.forEach(({item,qty})=>{
     if(qty>item.stock){
-      shortMsgs.push(`⚠️ ${nameEmoji(item.name)} ${item.name} — ขอ ${qty} แต่มีเหลือ ${item.stock} ชิ้น (ยังไม่เพิ่มให้)`);
+      // ของไม่พอ -> บอทสวมบทแอดมิน ช่วยคิดหาทางออกให้ลูกค้า
+      shortMsgs.push(shortSuggest(item, qty, items));
     }else{
       newCart.push({item,qty});
       total+=item.price*qty;
@@ -230,9 +231,9 @@ function quoteBack(){
   draftCart=newCart;
 
   let msg="";
-  if(shortMsgs.length) msg+=shortMsgs.join("\n")+"\n\n";
-  if(!okLines.length){ botSay(msg+"ไม่มีรายการที่สั่งได้ ลองปรับจำนวนแล้วสั่งใหม่ครับ"); draftCart=[]; return; }
-  msg+="รายการที่สั่ง:\n"+okLines.join("\n")+`\n\nรวม ${total.toLocaleString()} บาท`;
+  if(shortMsgs.length) msg+=shortMsgs.join("\n\n")+"\n\n";
+  if(!okLines.length){ botSay(msg+'บอกจำนวนที่รับได้ หรือเลือกรุ่นที่เสนอ แล้วพิมพ์สั่งใหม่ได้เลยครับ'); draftCart=[]; return; }
+  msg+="รายการที่สั่งได้ตอนนี้:\n"+okLines.join("\n")+`\n\nรวม ${total.toLocaleString()} บาท`;
 
   // เช็กวงเงิน (โหมด Supabase เท่านั้น; โหมด BC เช็กตอนยืนยันผ่าน getCustomerCheck)
   if(!(typeof USE_BC!=="undefined" && USE_BC)){
