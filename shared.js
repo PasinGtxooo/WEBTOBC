@@ -50,6 +50,36 @@ function nameEmoji(name){
   return"📦";
 }
 
+/* ----- จัดหมวดสินค้า (เดาจากชื่อ+คำค้น) ไว้โชว์รายการแบบคนขาย ----- */
+function catOf(item){
+  const keys=Array.isArray(item.keys)?item.keys.join(" "):(item.keys||"");
+  const s=(item.name+" "+keys).toLowerCase();
+  if(/เมาส์|เม้าส์|mouse/.test(s))               return"🖱️ เมาส์";
+  if(/คีย์บอร์ด|คีบอด|keyboard|แป้นพิมพ์/.test(s)) return"⌨️ คีย์บอร์ด";
+  if(/จอ|monitor|หน้าจอ/.test(s))                 return"🖥️ จอมอนิเตอร์";
+  if(/หูฟัง|headphone|headset|earphone|earbud/.test(s)) return"🎧 หูฟัง";
+  if(/สาย|hub|usb|adapter|อะแดปเตอร์|ชาร์จ|charger|เมมโมรี|flashdrive|แฟลชไดร/.test(s)) return"🔌 สาย/อุปกรณ์เสริม";
+  if(/น้ำ|โค้ก|โคล่า|โซดา|กาแฟ|ขนม|มัน|ทิชชู|กระดาษ/.test(s)) return"🧃 ของกินของใช้";
+  return"📦 อื่นๆ";
+}
+
+/* สร้างข้อความรายการสินค้าแบบคนขาย (จัดเป็นหมวด + ราคา + คงเหลือ) */
+function catalogText(list){
+  const groups={};
+  list.forEach(i=>{ const c=catOf(i); (groups[c]=groups[c]||[]).push(i); });
+  let out="มีหลายอย่างเลยครับ 😊 ตอนนี้ที่ร้านมี\n";
+  for(const c of Object.keys(groups)){
+    out+=`\n${c}\n`;
+    groups[c].forEach(i=>{
+      const price=(i.price!=null)?` — ${i.price.toLocaleString()} บาท`:"";
+      const stock=(i.stock!=null)?` (เหลือ ${i.stock})`:"";
+      out+=`• ${i.name}${price}${stock}\n`;
+    });
+  }
+  out+=`\nสนใจตัวไหน พิมพ์ชื่อหรือยี่ห้อได้เลยครับ เช่น "เอา ${list[0].name} 1"`;
+  return out.trim();
+}
+
 /* ----- "สมอง" จำลอง: หาสินค้า + จำนวน + ตรวจความกำกวม (เวอร์ชันจริง = Claude) ----- */
 
 // หาเลขจำนวนใกล้ๆ ชื่อสินค้า (ดูหลังก่อน แล้วค่อยหน้า) — หยุดที่ตัวคั่น จะได้ไม่หยิบเลขของชิ้นอื่น
