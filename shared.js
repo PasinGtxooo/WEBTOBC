@@ -102,16 +102,23 @@ function shortSuggest(item, want, items){
 
 /* ----- "สมอง" จำลอง: หาสินค้า + จำนวน + ตรวจความกำกวม (เวอร์ชันจริง = Claude) ----- */
 
-// หาเลขจำนวนใกล้ๆ ชื่อสินค้า (ดูหลังก่อน แล้วค่อยหน้า) — หยุดที่ตัวคั่น จะได้ไม่หยิบเลขของชิ้นอื่น
+// หน่วยนับ — ใช้ชี้ว่าเลขไหนคือ "จำนวน" จริง (กันไปหยิบเลขรุ่น เช่น MX 518)
+const QTY_UNIT=/(\d+)\s*(ชิ้น|อัน|ตัว|แพ็?ค|กล่อง|ลัง|โหล|ชุด|คู่|เส้น|pcs?|pack)/i;
+
+// หาเลขจำนวนใกล้ๆ ชื่อสินค้า (ดูหลังก่อน แล้วค่อยหน้า) — เลขที่มีหน่วยนับมาก่อน, หยุดที่ตัวคั่น
 function qtyNear(text, endIdx, startIdx){
   // ข้างหลัง: ตั้งแต่จบคำไปจนเจอคำเชื่อม/ตัวคั่น ค่อยหยุด
-  let after=text.slice(endIdx, endIdx+12);
+  let after=text.slice(endIdx, endIdx+16);
   const cut=after.search(/[,+]|กับ|และ|กะ/);
   if(cut>=0) after=after.slice(0,cut);
-  let m=after.match(/\d+/);
+  let m=after.match(QTY_UNIT);           // "2 ชิ้น" ชนะ "518" (เลขรุ่น)
+  if(m) return parseInt(m[1],10);
+  m=after.match(/\d+/);
   if(m) return parseInt(m[0],10);
   // ข้างหน้า: เฉพาะช่วงหลังตัวคั่นสุดท้าย (เลขต้องติดกับคำนี้ เช่น "50 แพ็คน้ำดื่ม")
-  let before=text.slice(Math.max(0,startIdx-12), startIdx).split(/[,+]|กับ|และ|กะ/).pop();
+  let before=text.slice(Math.max(0,startIdx-16), startIdx).split(/[,+]|กับ|และ|กะ/).pop();
+  m=before.match(QTY_UNIT);
+  if(m) return parseInt(m[1],10);
   const bm=before.match(/\d+/g);
   return bm ? parseInt(bm[bm.length-1],10) : null;   // null = ไม่ได้บอกจำนวน (จะไปถามทีหลัง)
 }

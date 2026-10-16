@@ -58,6 +58,7 @@
 let customers=[], items=[], currentCust=null, draftCart=[];
 let pendingQueue=[];   // คิวรายการที่กำกวม รอลูกค้าเลือก
 let pendingQty=null;   // index ใน draftCart ที่รอลูกค้าบอกจำนวน
+let pendingShort=[];   // สินค้าที่เพิ่งแจ้งว่าของไม่พอ (จำไว้ เผื่อลูกค้าพิมพ์จำนวนใหม่)
 const myOrders={};   // {orderId: lastStatus} ไว้รับข้อความตอบกลับ
 
 const chatEl=document.getElementById("chat");
@@ -117,7 +118,7 @@ inputEl.addEventListener("keydown",e=>{if(e.key==="Enter")handleSend();});
 async function handleSend(){
   const text=inputEl.value.trim(); if(!text||!currentCust)return;
   inputEl.value=""; userSay(text);
-  if(/^(ยกเลิก|cancel|ไม่เอา)/i.test(text)){draftCart=[];pendingQueue=[];pendingQty=null;botSay("ยกเลิกรายการแล้วครับ พิมพ์สั่งใหม่ได้เลย");return;}
+  if(/^(ยกเลิก|cancel|ไม่เอา)/i.test(text)){draftCart=[];pendingQueue=[];pendingQty=null;pendingShort=[];botSay("ยกเลิกรายการแล้วครับ พิมพ์สั่งใหม่ได้เลย");return;}
 
   // ถ้ากำลังรอลูกค้าบอกจำนวน
   if(pendingQty!=null){
@@ -127,6 +128,20 @@ async function handleSend(){
     pendingQty=null;
     askNextOrQuote();
     return;
+  }
+
+  // หลังแจ้งของไม่พอ: ลูกค้าพิมพ์จำนวนเฉยๆ (เช่น "เอา 2 ชิ้น") -> ถือว่าสั่งของตัวที่เพิ่งคุย
+  if(pendingShort.length){
+    const m=text.match(/\d+/);
+    const r=analyze(text,items);
+    if(m && !r.lines.length && !r.ambiguous.length){
+      const qty=parseInt(m[0],10);
+      draftCart=pendingShort.map(item=>({item,qty}));
+      pendingShort=[];
+      askNextOrQuote();
+      return;
+    }
+    pendingShort=[];   // พิมพ์อย่างอื่น = เปลี่ยนเรื่อง ไปตามปกติ
   }
 
   // ถ้ากำลังรอลูกค้าเลือกสินค้าที่กำกวมอยู่
@@ -217,11 +232,12 @@ function askNextOrQuote(){
 }
 
 function quoteBack(){
-  let okLines=[],total=0,shortMsgs=[],newCart=[];
+  let okLines=[],total=0,shortMsgs=[],newCart=[],shortItems=[];
   draftCart.forEach(({item,qty})=>{
     if(qty>item.stock){
       // ของไม่พอ -> บอทสวมบทแอดมิน ช่วยคิดหาทางออกให้ลูกค้า
       shortMsgs.push(shortSuggest(item, qty, items));
+      shortItems.push(item);
     }else{
       newCart.push({item,qty});
       total+=item.price*qty;
@@ -229,6 +245,7 @@ function quoteBack(){
     }
   });
   draftCart=newCart;
+  pendingShort=shortItems;   // จำของที่ไม่พอ เผื่อลูกค้าพิมพ์จำนวนใหม่ (เช่น "เอา 2 ชิ้น")
 
   let msg="";
   if(shortMsgs.length) msg+=shortMsgs.join("\n\n")+"\n\n";
