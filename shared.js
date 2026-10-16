@@ -52,11 +52,18 @@ function nameEmoji(name){
 
 /* ----- "สมอง" จำลอง: หาสินค้า + จำนวน + ตรวจความกำกวม (เวอร์ชันจริง = Claude) ----- */
 
-// หาเลขจำนวนใกล้ๆ ชื่อสินค้า (ดูหลังก่อน แล้วค่อยหน้า)
+// หาเลขจำนวนใกล้ๆ ชื่อสินค้า (ดูหลังก่อน แล้วค่อยหน้า) — หยุดที่ตัวคั่น จะได้ไม่หยิบเลขของชิ้นอื่น
 function qtyNear(text, endIdx, startIdx){
-  let m=text.slice(endIdx, endIdx+12).match(/\d+/);
-  if(!m){ const bm=text.slice(Math.max(0,startIdx-12),startIdx).match(/\d+/g); if(bm) m=[bm[bm.length-1]]; }
-  return m ? parseInt(m[0],10) : null;   // null = ไม่ได้บอกจำนวน (จะไปถามทีหลัง)
+  // ข้างหลัง: ตั้งแต่จบคำไปจนเจอคำเชื่อม/ตัวคั่น ค่อยหยุด
+  let after=text.slice(endIdx, endIdx+12);
+  const cut=after.search(/[,+]|กับ|และ|กะ/);
+  if(cut>=0) after=after.slice(0,cut);
+  let m=after.match(/\d+/);
+  if(m) return parseInt(m[0],10);
+  // ข้างหน้า: เฉพาะช่วงหลังตัวคั่นสุดท้าย (เลขต้องติดกับคำนี้ เช่น "50 แพ็คน้ำดื่ม")
+  let before=text.slice(Math.max(0,startIdx-12), startIdx).split(/[,+]|กับ|และ|กะ/).pop();
+  const bm=before.match(/\d+/g);
+  return bm ? parseInt(bm[bm.length-1],10) : null;   // null = ไม่ได้บอกจำนวน (จะไปถามทีหลัง)
 }
 
 // ระยะแก้ไข (Levenshtein) — ไว้วัดว่าคำใกล้กันแค่ไหน
@@ -89,39 +96,45 @@ function findKey(text, key){
   return null;
 }
 
-// หาสินค้าทุกตัวที่คำค้นตรง/ใกล้เคียงกับข้อความ (เก็บตำแหน่ง + ความยาวคำที่ match)
+// หาสินค้าทุกตัวที่คำค้นตรง/ใกล้เคียงกับข้อความ (เก็บ "ทุกคำ" ที่ match + ตำแหน่ง + ความยาว)
 function findMatches(text, items){
   const lower=text.toLowerCase();
   const matches=[];
   items.forEach(item=>{
     const keys = Array.isArray(item.keys) ? item.keys : JSON.parse(item.keys||"[]");
-    let best=null;
     for(const key of keys){
       const hit=findKey(lower, key.toLowerCase());
-      if(!hit)continue;
-      if(!best || key.length>best.len) best={idx:hit.idx, len:hit.len}; // เอาคำที่ยาวสุด = เจาะจงสุด
+      if(hit) matches.push({item, idx:hit.idx, len:hit.len}); // เก็บทุกคำที่เจอ (ทั่วไป+ยี่ห้อ)
     }
-    if(best) matches.push({item, idx:best.idx, len:best.len});
   });
   return matches;
 }
+
+// มีตัวคั่น/คำเชื่อม/ตัวเลข อยู่ในช่องว่างไหม = คนละชิ้น (อย่ารวมกลุ่ม)
+function hasSep(gap){ return /[,+]|กับ|และ|กะ|\d/.test(gap); }
 
 // วิเคราะห์ข้อความ -> รายการที่ชัดเจน (lines) + รายการที่กำกวม (ambiguous)
 function analyze(text, items){
   const matches=findMatches(text, items).sort((a,b)=>a.idx-b.idx);
   const clusters=[];
   matches.forEach(mt=>{
-    // จัดกลุ่มคำที่ทับตำแหน่งเดียวกัน (= ลูกค้าพูดถึงของชิ้นเดียว)
-    let c=clusters.find(c=> mt.idx < c.end && (mt.idx+mt.len) > c.start);
-    if(c){ c.members.push({item:mt.item,len:mt.len}); c.start=Math.min(c.start,mt.idx); c.end=Math.max(c.end,mt.idx+mt.len); }
-    else clusters.push({members:[{item:mt.item,len:mt.len}], start:mt.idx, end:mt.idx+mt.len});
+    const mEnd=mt.idx+mt.len;
+    // จัดกลุ่ม: คำที่ทับตำแหน่งกัน หรือ อยู่ติดกัน (ช่องว่างสั้น ไม่มีตัวคั่น) = ลูกค้าพูดถึงของชิ้นเดียว
+    // เช่น "เมาส์ logitech" = เมาส์(ทั่วไป)+ยี่ห้อ ติดกัน -> กลุ่มเดียว แล้วเลือกตัวเจาะจงสุด
+    let c=clusters.find(c=>{
+      if(mt.idx < c.end && mEnd > c.start) return true;                        // ทับกัน
+      return mt.idx>=c.end && (mt.idx-c.end)<=3 && !hasSep(text.slice(c.end,mt.idx)); // ติดกัน
+    });
+    if(c){ c.members.push({item:mt.item,len:mt.len}); c.start=Math.min(c.start,mt.idx); c.end=Math.max(c.end,mEnd); }
+    else clusters.push({members:[{item:mt.item,len:mt.len}], start:mt.idx, end:mEnd});
   });
-  const lines=[], ambiguous=[];
+  const lines=[], ambiguous=[], seen=new Set();
   clusters.forEach(c=>{
     const qty=qtyNear(text, c.end, c.start);
     const maxLen=Math.max(...c.members.map(m=>m.len));
-    const cands=c.members.filter(m=>m.len===maxLen).map(m=>m.item); // ตัวที่ match เจาะจงสุด
-    if(cands.length===1) lines.push({item:cands[0], qty});
+    // ตัวที่ match เจาะจงสุด (คำยาวสุด) + ตัดสินค้าซ้ำในกลุ่มเดียวกัน
+    const cands=[...new Map(c.members.filter(m=>m.len===maxLen).map(m=>[m.item.no,m.item])).values()];
+    if(cands.length===1){ if(!seen.has(cands[0].no)){ lines.push({item:cands[0], qty}); seen.add(cands[0].no); } }
     else ambiguous.push({options:cands, qty});   // เจอหลายตัวเท่ากัน = กำกวม ต้องถาม
   });
   return {lines, ambiguous};
