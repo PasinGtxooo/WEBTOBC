@@ -56,10 +56,40 @@ function nameEmoji(name){
 function qtyNear(text, endIdx, startIdx){
   let m=text.slice(endIdx, endIdx+12).match(/\d+/);
   if(!m){ const bm=text.slice(Math.max(0,startIdx-12),startIdx).match(/\d+/g); if(bm) m=[bm[bm.length-1]]; }
-  return m ? parseInt(m[0],10) : 1;
+  return m ? parseInt(m[0],10) : null;   // null = ไม่ได้บอกจำนวน (จะไปถามทีหลัง)
 }
 
-// หาสินค้าทุกตัวที่คำค้นตรงกับข้อความ (เก็บตำแหน่ง + ความยาวคำที่ match)
+// ระยะแก้ไข (Levenshtein) — ไว้วัดว่าคำใกล้กันแค่ไหน
+function editDist(a, b){
+  const m=a.length, n=b.length;
+  if(!m) return n; if(!n) return m;
+  let prev=Array.from({length:n+1},(_,i)=>i), cur=new Array(n+1);
+  for(let i=1;i<=m;i++){
+    cur[0]=i;
+    for(let j=1;j<=n;j++){
+      const cost=a[i-1]===b[j-1]?0:1;
+      cur[j]=Math.min(cur[j-1]+1, prev[j]+1, prev[j-1]+cost);
+    }
+    [prev,cur]=[cur,prev];
+  }
+  return prev[n];
+}
+
+// หาคำค้นในข้อความ: ตรงเป๊ะก่อน ถ้าไม่เจอค่อยหา "คำใกล้เคียง" (พิมพ์ผิด/ตกวรรณยุกต์)
+function findKey(text, key){
+  const idx=text.indexOf(key);
+  if(idx>=0) return {idx, len:key.length};        // ตรงเป๊ะ
+  if(key.length<3) return null;
+  const tol = key.length<=4 ? 1 : 2;              // ยอมผิดได้ 1-2 ตัว
+  for(let L=Math.max(2,key.length-1); L<=key.length+1; L++){
+    for(let s=0; s+L<=text.length; s++){
+      if(editDist(text.substr(s,L), key) <= tol) return {idx:s, len:L};
+    }
+  }
+  return null;
+}
+
+// หาสินค้าทุกตัวที่คำค้นตรง/ใกล้เคียงกับข้อความ (เก็บตำแหน่ง + ความยาวคำที่ match)
 function findMatches(text, items){
   const lower=text.toLowerCase();
   const matches=[];
@@ -67,9 +97,9 @@ function findMatches(text, items){
     const keys = Array.isArray(item.keys) ? item.keys : JSON.parse(item.keys||"[]");
     let best=null;
     for(const key of keys){
-      const idx=lower.indexOf(key.toLowerCase());
-      if(idx===-1)continue;
-      if(!best || key.length>best.len) best={idx, len:key.length}; // เอาคำที่ยาวสุด = เจาะจงสุด
+      const hit=findKey(lower, key.toLowerCase());
+      if(!hit)continue;
+      if(!best || key.length>best.len) best={idx:hit.idx, len:hit.len}; // เอาคำที่ยาวสุด = เจาะจงสุด
     }
     if(best) matches.push({item, idx:best.idx, len:best.len});
   });

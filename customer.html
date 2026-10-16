@@ -57,6 +57,7 @@
 <script>
 let customers=[], items=[], currentCust=null, draftCart=[];
 let pendingQueue=[];   // คิวรายการที่กำกวม รอลูกค้าเลือก
+let pendingQty=null;   // index ใน draftCart ที่รอลูกค้าบอกจำนวน
 const myOrders={};   // {orderId: lastStatus} ไว้รับข้อความตอบกลับ
 
 const chatEl=document.getElementById("chat");
@@ -116,7 +117,17 @@ inputEl.addEventListener("keydown",e=>{if(e.key==="Enter")handleSend();});
 async function handleSend(){
   const text=inputEl.value.trim(); if(!text||!currentCust)return;
   inputEl.value=""; userSay(text);
-  if(/^(ยกเลิก|cancel|ไม่เอา)/i.test(text)){draftCart=[];pendingQueue=[];botSay("ยกเลิกรายการแล้วครับ พิมพ์สั่งใหม่ได้เลย");return;}
+  if(/^(ยกเลิก|cancel|ไม่เอา)/i.test(text)){draftCart=[];pendingQueue=[];pendingQty=null;botSay("ยกเลิกรายการแล้วครับ พิมพ์สั่งใหม่ได้เลย");return;}
+
+  // ถ้ากำลังรอลูกค้าบอกจำนวน
+  if(pendingQty!=null){
+    const m=text.match(/\d+/);
+    if(!m){botSay("พิมพ์จำนวนเป็นตัวเลขครับ เช่น 3");return;}
+    draftCart[pendingQty].qty=parseInt(m[0],10);
+    pendingQty=null;
+    askNextOrQuote();
+    return;
+  }
 
   // ถ้ากำลังรอลูกค้าเลือกสินค้าที่กำกวมอยู่
   if(pendingQueue.length){
@@ -130,6 +141,19 @@ async function handleSend(){
   }
 
   if(/^(ยืนยัน|ok|โอเค|ตกลง|เอาเลย|confirm)/i.test(text)&&draftCart.length){await createOrder();return;}
+
+  // คำถามว่า "มี...ไหม" — ตอบว่ามีอะไรบ้าง ไม่สั่งของ
+  if(/มี.*(ไหม|มั้ย|มัย|รึเปล่า|หรือเปล่า|ป่าว|ปะ|บ่)/.test(text) || /^(มีอะไร|มีสินค้า|ขายอะไร)/.test(text)){
+    const r=analyze(text,items);
+    const found=[...r.lines.map(l=>l.item), ...r.ambiguous.flatMap(a=>a.options)];
+    const uniq=[...new Map(found.map(i=>[i.no,i])).values()];
+    if(uniq.length){
+      botSay("มีครับ 😊\n"+uniq.map(i=>`${nameEmoji(i.name)} ${i.name} (คงเหลือ ${i.stock})`).join("\n")+`\n\nพิมพ์สั่งได้เลย เช่น "เอา${uniq[0].name} 1"`);
+    }else{
+      botSay("ขอโทษครับ ตอนนี้ไม่มีสินค้าที่ตรงกับที่ถามมา");
+    }
+    return;
+  }
 
   // เลือกสมอง: AI (ผ่าน /api/chat) หรือ ตัวจับคำในเครื่อง
   let lines, ambiguous;
@@ -166,24 +190,42 @@ async function askAI(text){
   return await res.json();
 }
 
-// ถ้ายังมีของกำกวมค้างอยู่ให้ถาม ไม่งั้นสรุปราคา
+// ถ้ายังมีของกำกวม -> ถาม; ยังไม่รู้จำนวน -> ถามจำนวน; ไม่งั้นสรุปราคา
 function askNextOrQuote(){
   if(pendingQueue.length){
     const g=pendingQueue[0];
     const opts=g.options.map((it,i)=>`${i+1}) ${nameEmoji(it.name)} ${it.name} — ${it.price.toLocaleString()} บาท`).join("\n");
     botSay(`รายการนี้มีหลายแบบครับ อยากได้อันไหน (พิมพ์เลข)\n${opts}`);
-  }else{
-    quoteBack();
+    return;
   }
+  // หา item ที่ยังไม่บอกจำนวน -> ถามทีละตัว
+  const idx=draftCart.findIndex(l=> l.qty==null || l.qty<=0);
+  if(idx>=0){
+    pendingQty=idx;
+    botSay(`เอา ${nameEmoji(draftCart[idx].item.name)} ${draftCart[idx].item.name} กี่ชิ้นครับ?`);
+    return;
+  }
+  quoteBack();
 }
 
 function quoteBack(){
-  let lines=[],total=0,stockWarn=[];
-  draftCart.forEach(({item,qty})=>{const sub=item.price*qty;total+=sub;
-    lines.push(`${nameEmoji(item.name)} ${item.name} × ${qty} = ${sub.toLocaleString()} บาท`);
-    if(qty>item.stock)stockWarn.push(item.name);});
-  let msg="รายการที่สั่ง:\n"+lines.join("\n")+`\n\nรวม ${total.toLocaleString()} บาท`;
-  if(stockWarn.length)msg+=`\n\n⚠️ สินค้าไม่พอ: ${stockWarn.join(", ")} — แอดมินจะติดต่อกลับ`;
+  let okLines=[],total=0,shortMsgs=[],newCart=[];
+  draftCart.forEach(({item,qty})=>{
+    if(qty>item.stock){
+      shortMsgs.push(`⚠️ ${nameEmoji(item.name)} ${item.name} — ขอ ${qty} แต่มีเหลือ ${item.stock} ชิ้น (ยังไม่เพิ่มให้)`);
+    }else{
+      newCart.push({item,qty});
+      total+=item.price*qty;
+      okLines.push(`${nameEmoji(item.name)} ${item.name} × ${qty} = ${(item.price*qty).toLocaleString()} บาท`);
+    }
+  });
+  draftCart=newCart;
+
+  let msg="";
+  if(shortMsgs.length) msg+=shortMsgs.join("\n")+"\n\n";
+  if(!okLines.length){ botSay(msg+"ไม่มีรายการที่สั่งได้ ลองปรับจำนวนแล้วสั่งใหม่ครับ"); draftCart=[]; return; }
+  msg+="รายการที่สั่ง:\n"+okLines.join("\n")+`\n\nรวม ${total.toLocaleString()} บาท`;
+
   // เช็กวงเงิน (โหมด Supabase เท่านั้น; โหมด BC เช็กตอนยืนยันผ่าน getCustomerCheck)
   if(!(typeof USE_BC!=="undefined" && USE_BC)){
     if(currentCust.blocked){botSay(msg+"\n\n🚫 บัญชีนี้ค้างชำระ กรุณาติดต่อฝ่ายขายครับ");draftCart=[];return;}
