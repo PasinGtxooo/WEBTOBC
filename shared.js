@@ -96,15 +96,26 @@ function findKey(text, key){
   return null;
 }
 
-// หาสินค้าทุกตัวที่คำค้นตรง/ใกล้เคียงกับข้อความ (เก็บ "ทุกคำ" ที่ match + ตำแหน่ง + ความยาว)
+// นับว่าคำค้นแต่ละคำ "ของกี่ชิ้นมี" — คำที่ของน้อยชิ้นมี = เจาะจง (เช่น ยี่ห้อ/รุ่น)
+function keyCounts(items){
+  const cnt={};
+  items.forEach(it=>{
+    const keys = Array.isArray(it.keys) ? it.keys : JSON.parse(it.keys||"[]");
+    new Set(keys.map(k=>k.toLowerCase())).forEach(k=>cnt[k]=(cnt[k]||0)+1);
+  });
+  return cnt;
+}
+
+// หาสินค้าทุกตัวที่คำค้นตรง/ใกล้เคียงกับข้อความ (เก็บ "ทุกคำ" ที่ match + ตำแหน่ง + คำ)
 function findMatches(text, items){
   const lower=text.toLowerCase();
   const matches=[];
   items.forEach(item=>{
     const keys = Array.isArray(item.keys) ? item.keys : JSON.parse(item.keys||"[]");
     for(const key of keys){
-      const hit=findKey(lower, key.toLowerCase());
-      if(hit) matches.push({item, idx:hit.idx, len:hit.len}); // เก็บทุกคำที่เจอ (ทั่วไป+ยี่ห้อ)
+      const k=key.toLowerCase();
+      const hit=findKey(lower, k);
+      if(hit) matches.push({item, idx:hit.idx, len:hit.len, key:k}); // เก็บทุกคำที่เจอ (ทั่วไป+ยี่ห้อ)
     }
   });
   return matches;
@@ -115,27 +126,39 @@ function hasSep(gap){ return /[,+]|กับ|และ|กะ|\d/.test(gap); }
 
 // วิเคราะห์ข้อความ -> รายการที่ชัดเจน (lines) + รายการที่กำกวม (ambiguous)
 function analyze(text, items){
+  const cnt=keyCounts(items);
   const matches=findMatches(text, items).sort((a,b)=>a.idx-b.idx);
   const clusters=[];
   matches.forEach(mt=>{
     const mEnd=mt.idx+mt.len;
     // จัดกลุ่ม: คำที่ทับตำแหน่งกัน หรือ อยู่ติดกัน (ช่องว่างสั้น ไม่มีตัวคั่น) = ลูกค้าพูดถึงของชิ้นเดียว
-    // เช่น "เมาส์ logitech" = เมาส์(ทั่วไป)+ยี่ห้อ ติดกัน -> กลุ่มเดียว แล้วเลือกตัวเจาะจงสุด
+    // เช่น "คีย์บอร์ด razer" = คำทั่วไป+ยี่ห้อ ติดกัน -> กลุ่มเดียว แล้วเลือกตัวเจาะจงสุด
     let c=clusters.find(c=>{
       if(mt.idx < c.end && mEnd > c.start) return true;                        // ทับกัน
       return mt.idx>=c.end && (mt.idx-c.end)<=3 && !hasSep(text.slice(c.end,mt.idx)); // ติดกัน
     });
-    if(c){ c.members.push({item:mt.item,len:mt.len}); c.start=Math.min(c.start,mt.idx); c.end=Math.max(c.end,mEnd); }
-    else clusters.push({members:[{item:mt.item,len:mt.len}], start:mt.idx, end:mEnd});
+    if(c){ c.members.push(mt); c.start=Math.min(c.start,mt.idx); c.end=Math.max(c.end,mEnd); }
+    else clusters.push({members:[mt], start:mt.idx, end:mEnd});
   });
   const lines=[], ambiguous=[], seen=new Set();
   clusters.forEach(c=>{
     const qty=qtyNear(text, c.end, c.start);
-    const maxLen=Math.max(...c.members.map(m=>m.len));
-    // ตัวที่ match เจาะจงสุด (คำยาวสุด) + ตัดสินค้าซ้ำในกลุ่มเดียวกัน
-    const cands=[...new Map(c.members.filter(m=>m.len===maxLen).map(m=>[m.item.no,m.item])).values()];
+    // รวม match ตามสินค้า: นับจำนวน "คำ" ที่ครอบได้ + ความเจาะจงสูงสุด (ยี่ห้อ/รุ่น)
+    const agg=new Map();
+    c.members.forEach(m=>{
+      let a=agg.get(m.item.no);
+      if(!a){ a={item:m.item, spans:new Set(), spec:0}; agg.set(m.item.no,a); }
+      a.spans.add(m.idx);
+      a.spec=Math.max(a.spec, 1/(cnt[m.key]||1));   // คำที่ของชิ้นเดียวมี = spec 1 (เจาะจงสุด)
+    });
+    // เลือกตัวที่ครอบคำได้มากสุด ก่อน แล้วค่อยดูความเจาะจง
+    let arr=[...agg.values()];
+    const maxCover=Math.max(...arr.map(a=>a.spans.size));
+    arr=arr.filter(a=>a.spans.size===maxCover);
+    const maxSpec=Math.max(...arr.map(a=>a.spec));
+    const cands=arr.filter(a=>a.spec===maxSpec).map(a=>a.item);
     if(cands.length===1){ if(!seen.has(cands[0].no)){ lines.push({item:cands[0], qty}); seen.add(cands[0].no); } }
-    else ambiguous.push({options:cands, qty});   // เจอหลายตัวเท่ากัน = กำกวม ต้องถาม
+    else ambiguous.push({options:cands, qty});   // เจาะจงเท่ากันหลายตัว = กำกวม ต้องถาม
   });
   return {lines, ambiguous};
 }
